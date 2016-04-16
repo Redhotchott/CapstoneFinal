@@ -3,6 +3,7 @@ rm(list=ls())
 library( 'e1071' )
 library('rpart')
 library('dplyr')
+library('parallel')
 setwd('/Users/tchott/Documents/CapstoneFinal')
 load('Predictors.Rdata')
 
