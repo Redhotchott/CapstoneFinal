@@ -25,7 +25,8 @@ test.nn=array()
 train.nn=array()
 truth<- array()
 pred<- array()
-for(i in 1:12){
+zz<-array(NA, c(4,4,12))
+for(i in 2:12){
   train.years=1996:2000+i-1
   test.years=2000+i
   
@@ -58,5 +59,8 @@ for(i in 1:12){
   
   #implement the SVM
   model<- svm( ptype.df~., data=Twb.type[train.rows,], probability=T, type='C-classification',class.weights=c("1"=t.w[1], "2"=t.w[2], "3"=t.w[3], "4"=t.w[4]))
+  res <- predict( model, newdata=Twb.type[test.rows,1:31])
+  zz[,,i]<-table(pred = res, true = Twb.type[test.rows,32])
 }
 detach(Twb.type)
+save(zz, 'tables.RData')
