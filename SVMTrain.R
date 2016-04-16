@@ -7,7 +7,7 @@ library('parallel')
 library(sn)
 library(fields)
 library(mvtnorm)
-setwd('/Users/tchott/Documents/CapstoneFinal')
+#setwd('/Users/tchott/Documents/CapstoneFinal')
 load('Predictors.Rdata')
 
 ptype.fac<-as.factor(ptype)
@@ -25,7 +25,7 @@ test.nn=array()
 train.nn=array()
 truth<- array()
 pred<- array()
-for(i in 1:1){
+for(i in 1:12){
   train.years=1996:2000+i-1
   test.years=2000+i
   
