@@ -84,6 +84,51 @@ save(zz, file='tables1.RData')
 save(model, file='model1.RData')
 detach(Twb.type)
 
+
+
+cl<-makeCluster(6)
+registerDoSNOW(cl)
+for(i in 1:12){
+  train.years=1996:2000+i-1
+  test.years=2000+i
+  
+  print(i)
+  
+  train.labels=head(which((years>=train.years[1] & months >8)),1):tail(which(years<=train.years[5]+1 & months <6),1)
+  test.labels=which((years==test.years & months>8) | (years==test.years+1 & months < 6))
+  
+  
+  train.rows=which(date.ind%in%train.labels)
+  test.rows=which(date.ind%in%test.labels)
+  
+  train.nn[i]=length(train.rows)
+  test.nn[i]=length(test.rows)
+  
+  #######################################################
+  ##Computing means and covariances for each precip type
+  #######################################################
+  rain.rows=which(ptype[train.rows]=="RA")
+  snow.rows=which(ptype[train.rows]=="SN")
+  pellet.rows=which(ptype[train.rows]=="IP")
+  ice.rows=which(ptype[train.rows]=="FZRA")
+  
+  r.l<-length(rain.rows)
+  s.l<-length(snow.rows)
+  p.l<-length(pellet.rows)
+  i.l<-length(ice.rows)
+  #in order F, I, R, S
+  t.w<-c(p.l/i.l,1,p.l/r.l, p.l/s.l)
+  
+  #implement the SVM
+  model[[i]]<- svm( ptype.df~., data=Twb.type[train.rows,], probability=T, type='C-classification',kernel='sigmoid', class.weights=c("1"=t.w[1], "2"=t.w[2], "3"=t.w[3], "4"=t.w[4]))
+  res[[i]] <- predict( model[[i]], newdata=Twb.type[test.rows,1:31])
+  zz[,,i]<-table(pred = res[[i]], true = Twb.type[test.rows,32])
+}
+stopCluster(cl)
+save(zz, file='tables1.RData')
+save(model, file='model1.RData')
+detach(Twb.type)
+
 acc=0
 for( i in 1:12){
   acc=acc+sum(diag(zz[,,i]))
