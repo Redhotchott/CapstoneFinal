@@ -34,7 +34,7 @@ res<-list()
 
 cl<-makeCluster(6)
 registerDoSNOW(cl)
-foreach (i =1:12) %dopar%{
+list2<-foreach (i =1:1) %dopar%{
   library( 'e1071' )
   library('rpart')
   library('dplyr')
@@ -75,19 +75,21 @@ foreach (i =1:12) %dopar%{
   t.w<-c(p.l/i.l,1,p.l/r.l, p.l/s.l)
   
   #implement the SVM
-  model[[i]]<- svm( ptype.df~., data=Twb.type[train.rows,], probability=T, type='C-classification',kernel='sigmoid', class.weights=c("1"=t.w[1], "2"=t.w[2], "3"=t.w[3], "4"=t.w[4]))
+  model[[i]]<- svm( ptype.df~., data=Twb.type[train.rows,], probability=T, kernel='poly', type='C-classification', class.weights=c("1"=t.w[1], "2"=t.w[2], "3"=t.w[3], "4"=t.w[4]))
   res[[i]] <- predict( model[[i]], newdata=Twb.type[test.rows,1:31])
   zz[,,i]<-table(pred = res[[i]], true = Twb.type[test.rows,32])
 }
 stopCluster(cl)
-save(zz, file='tables1.RData')
-save(model, file='model1.RData')
+save(list2, file='tables1-rep.RData')
 detach(Twb.type)
 
 acc=0
-for( i in 1:12){
-  acc=acc+sum(diag(zz[,,i]))
+tot=0
+for( i in 1:1){
+  acc=acc+sum(diag(list2[[i]]))
+  tot=tot+sum(list2[[i]])
 }
-acc/sum(zz)
-#V1 - weighted proportionally, gamma default (1/(datadim)), kernel=default (unknown),  cost default (1)
-#V2 - weighted proportionally, gamma default (1/(datadim)), kernel=sigmoid,  cost default (1)
+acc/tot
+#V1 - weighted proportionally, gamma default (1/(datadim)), kernel=default (unknown),  cost default (1) 92.78%  --- 86.324%
+#V2 - weighted proportionally, gamma default (1/(datadim)), kernel=sigmoid,  cost default (1) 65.6% 
+#V2 - weighted proportionally, gamma default (1/(datadim)), kernel=poly  cost default (1) 65.6% 

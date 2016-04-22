@@ -12,6 +12,27 @@ library(doSNOW)
 #setwd('/Users/tchott/Documents/CapstoneFinal')
 load('Predictors.Rdata')
 
+
+#FUNCTION 1 - this function creates a wts vector to use as the prior probs
+
+create.wt<-function(train.rows.mon){
+  rain.rows=which(ptype[train.rows.mon]=="RA")
+  snow.rows=which(ptype[train.rows.mon]=="SN")
+  pellet.rows=which(ptype[train.rows.mon]=="IP")
+  ice.rows=which(ptype[train.rows.mon]=="FZRA")
+  
+  r.l<-length(rain.rows)
+  s.l<-length(snow.rows)
+  p.l<-length(pellet.rows)
+  i.l<-length(ice.rows)
+  p.lengths<-c(i.l,p.l,r.l,s.l)
+  p.class<-p.lengths!=0
+  
+  ref<-which(p.lengths==min(p.lengths[p.lengths!=0]))
+  class.wts<-p.lengths[ref]/p.lengths[p.class]
+  return(class.wts)
+}
+
 ptype.fac<-as.factor(ptype)
 
 Twb.type<-cbind(Twb.prof,ptype.fac) %>% as.data.frame
@@ -29,9 +50,9 @@ truth<- array()
 pred<- array()
 zz<-array(NA, c(4,4,12))
 model<-list()
-mon.model<-list()
+model.mon<-list()
 res<-list()
-
+res.mon<-list()
 
 cl<-makeCluster(6)
 registerDoSNOW(cl)
@@ -67,34 +88,26 @@ list2<-foreach (i =1:12) %dopar%{
     train.rows.mon=train.rows[(all.months[train.rows]==j)]
     test.rows.mon=test.rows[(all.months[train.rows]==j)]
   
-    rain.rows=which(ptype[train.rows.mon]=="RA")
-    snow.rows=which(ptype[train.rows.mon]=="SN")
-    pellet.rows=which(ptype[train.rows.mon]=="IP")
-    ice.rows=which(ptype[train.rows.mon]=="FZRA")
-    
-    r.l<-length(rain.rows)
-    s.l<-length(snow.rows)
-    p.l<-length(pellet.rows)
-    i.l<-length(ice.rows)
-    p.lengths<-c(i.l,p.l,r.l,s.l)
-    p.class<-p.lengths!=0
-    
-    ref<-which(p.lengths==min(p.lengths[p.lengths!=0]))
-    
     
     
     #in order F, I, R, S
-    t.w<-c(p.l/i.l,1,p.l/r.l, p.l/s.l)
+    t.w<-create.wt(train.rows.mon)
     
-    model.mon[[j]]<- svm( ptype.df~., data=Twb.type[train.rows.mon,], probability=T, type='C-classification', class.weights=c("1"=t.w[1], "2"=t.w[2], "3"=t.w[3], "4"=t.w[4]))
-    res.mon[[j]] <- predict( model.mon[[j]], newdata=Twb.type[test.rows.mon,1:31])
-    zz[,,j]<-table(pred = res[[i]], true = Twb.type[test.rows,32])
+    if(length(t.w)==3){model.mon[[j]]<- svm( ptype.df~., data=Twb.type[train.rows.mon,],
+                                             probability=T, type='C-classification', 
+                                             class.weights=c("1"=t.w[1], "2"=t.w[2], "3"=t.w[3]))}
+    if(length(t.w)==4){model.mon[[j]]<- svm( ptype.df~., data=Twb.type[train.rows.mon,],
+                                             probability=T, type='C-classification', 
+                                             class.weights=c("1"=t.w[1], "2"=t.w[2], "3"=t.w[3],"4"=t.w[4]))}
+    model<-model.mon[[j]]
+    res.mon[[j]] <- predict( model, newdata=Twb.type[test.rows.mon,1:31])
+    zz[,,i]<-zz[,,i]+table(pred = res.mon[[j]], true = Twb.type[test.rows,32])
   }
-  
-  
+  model[[i]]<-model.mon
+  res[[i]]<-res.mon
+  zz[,,i]
   
   #implement the SVM
-  
 }
 stopCluster(cl)
 detach(Twb.type)
@@ -110,9 +123,4 @@ acc/tot
 #V2 - weighted proportionally, gamma default (1/(datadim)), kernel=sigmoid,  cost default (1) 65.6% 
 #V2 - weighted proportionally, gamma default (1/(datadim)), kernel=poly  cost default (1) 65.6% 
 
-
-
-
-for( j in unique(all.months)){
-  print(j)
-}
+for ( i in 1:1)
