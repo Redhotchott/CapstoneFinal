@@ -95,7 +95,8 @@ list2<-foreach (i =1:12) %dopar%{
     
     if(length(t.w)==3){model.mon[[j]]<- svm( ptype.df~., data=Twb.type[train.rows.mon,],
                                              probability=T, type='C-classification', 
-                                             class.weights=c("1"=t.w[1], "2"=t.w[2], "3"=t.w[3]))}
+                                             class.weights=c("1"=t.w[1], "2"=t.w[2], "3"=t.w[3]))
+    }
     if(length(t.w)==4){model.mon[[j]]<- svm( ptype.df~., data=Twb.type[train.rows.mon,],
                                              probability=T, type='C-classification', 
                                              class.weights=c("1"=t.w[1], "2"=t.w[2], "3"=t.w[3],"4"=t.w[4]))}
@@ -123,4 +124,94 @@ acc/tot
 #V2 - weighted proportionally, gamma default (1/(datadim)), kernel=sigmoid,  cost default (1) 65.6% 
 #V2 - weighted proportionally, gamma default (1/(datadim)), kernel=poly  cost default (1) 65.6% 
 
-for ( i in 1:1)
+for ( i in 1:12){
+  train.years=1996:2000+i-1
+  test.years=2000+i
+  
+  print(paste('Training Set: ', i))
+  
+  train.labels=head(which((years>=train.years[1] & months >8)),1):tail(which(years<=train.years[5]+1 & months <6),1)
+  test.labels=which((years==test.years & months>8) | (years==test.years+1 & months < 6))
+  
+  
+  train.rows=which(date.ind%in%train.labels)
+  test.rows=which(date.ind%in%test.labels)
+  
+  train.nn[i]=length(train.rows)
+  test.nn[i]=length(test.rows)
+  
+  #######################################################
+  ##Computing means and covariances for each precip type
+  #######################################################
+  for (j in unique(all.months)){
+    print(paste('Month: ', j))
+    train.rows.mon=train.rows[which(all.months[train.rows]==j)]
+    test.rows.mon=test.rows[which(all.months[test.rows]==j)]
+    
+    
+    
+    #in order F, I, R, S
+    t.w<-create.wt(train.rows.mon)
+    
+    if(length(t.w)==3){
+      if(any(ptype[train.rows.mon]=='IP')){model.mon[[j]]<- svm( ptype.df~., data=Twb.type[train.rows.mon,],
+                                             probability=T, type='C-classification', 
+                                             class.weights=c("2"=t.w[1], "3"=t.w[2], "4"=t.w[3]))
+        } else {model.mon[[j]]<- svm( ptype.df~., data=Twb.type[train.rows.mon,],
+                                  probability=T, type='C-classification', 
+                                  class.weights=c("1"=t.w[1], "3"=t.w[2], "4"=t.w[3]))}
+    } else {model.mon[[j]]<- svm( ptype.df~., data=Twb.type[train.rows.mon,],
+                                             probability=T, type='C-classification', 
+                                             class.weights=c("1"=t.w[1], "2"=t.w[2], "3"=t.w[3],"4"=t.w[4]))
+    }
+    res.mon[[j]] <- predict( model.mon[[j]], newdata=Twb.type[test.rows.mon,1:31])
+    tt<-table(pred = res.mon[[j]], true = Twb.type[test.rows.mon,32])
+    if(j==11){
+      zz[,,i]<-tt
+    } else if (dim(tt)[1]==3 & dim(tt)[2]==2){
+      zz[c(1,3:4),3:4,i]<-zz[c(1,3:4),3:4,i]+tt
+    } else if (dim(tt)[2]<4 & any(ptype[train.rows.mon]=='IP')){
+      zz[2:4,2:4,i]<-zz[2:4,2:4,i]+tt
+    } else if (dim(tt)[2]<4 & any(ptype[train.rows.mon]=='FZRA')){
+      zz[c(1,3:4),c(1,3:4),i]<-zz[c(1,3:4),c(1,3:4),i]+tt
+    } else {zz[,,i]<-zz[,,i]+tt}
+    
+    model[[i]]<-model.mon
+    res[[i]]<-res.mon
+    print(zz[,,i])
+    
+    ##FUNCTIONIZE zz
+  }
+}
+
+
+######WHICH ARE MISSING STUFF
+for(i in 1:12){
+  train.years=1996:2000+i-1
+  test.years=2000+i
+  
+  print(paste('Training Set: ', i))
+  
+  train.labels=head(which((years>=train.years[1] & months >8)),1):tail(which(years<=train.years[5]+1 & months <6),1)
+  test.labels=which((years==test.years & months>8) | (years==test.years+1 & months < 6))
+  
+  
+  train.rows=which(date.ind%in%train.labels)
+  test.rows=which(date.ind%in%test.labels)
+  
+  train.nn[i]=length(train.rows)
+  test.nn[i]=length(test.rows)
+  for(j in unique(months)){
+    print(paste('Month: ', j))
+    train.rows.mon=train.rows[which(all.months[train.rows]==j)]
+    test.rows.mon=test.rows[which(all.months[test.rows]==j)]
+    
+    if(length(unique(ptype[train.rows.mon]))<4|length(unique(ptype[test.rows.mon]))<4){
+      print(paste('TRAIN: ', unique(ptype[train.rows.mon])))
+      print(paste('TEST: ', unique(ptype[test.rows.mon])))
+    }
+  }
+}
+
+zz<-matrix(c(42, 10,432,  127,41,   14,  685,  367,9,    0, 5032,   20, 20,    7,  221, 2949), nrow=4,ncol=4, byrow=T)
+
