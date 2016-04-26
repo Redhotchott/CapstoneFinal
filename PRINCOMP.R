@@ -63,7 +63,7 @@ print(ip)
 plot(ip, type='l')
 
 
-par(mfrow=c(2,2))
+par(mfrow=c(1,4), mai=c(1,0.5,0.5,1))
 plot(ra,type='l')
 plot(sn,type='l')
 plot(fz,type='l')

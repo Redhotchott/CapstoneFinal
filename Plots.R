@@ -1,3 +1,4 @@
+rm(list=ls())
 library(fields)
 
 load('predictors.Rdata')
@@ -13,13 +14,16 @@ make.cov.plot<-function(z){
   image.plot(1:16,1:16,t(cov.mat[16:1,]),main=paste(z, ' Covariance' ),xlab="",ylab="")
 }
 
-par(mfrow=c(2,2))
+par(mfrow=c(1,4), mai = c(.7, 0.4, 0.4, .7))
 cov.mats<-lapply(p.types,make.cov.plot)
-
+?mai
 ?lapply
 ??image.plot
 
-
+train.rows<-list()
+test.labels<-list()
+train.lables<-list()
+test.rows<-list()
 ##########################Normality Density Plots
 for(i in 1:12){
   train.years=1996:2000+i-1
@@ -34,11 +38,40 @@ for(i in 1:12){
   train.rows[[i]]=which(date.ind%in%train.labels)
   test.rows[[i]]=which(date.ind%in%test.labels)
 }
+#list order RA, SN, FZRA, IP
+ptype.rows<-list()
+colors<-c('green','blue', 'red', 'orange')
 
-make.dens.plot<-function(p.rows){
-  means<-apply(Twb.prof[p.rows,],2,mean)
-  covs<-apply(Twb.prof[p.rows,],2, cov)
-  
-  
-  
+z=1
+for(i in 1:4){
+  ptype.rows[[i]]<-p.rows[which(ptype==p.types[i])]
+  p.mean<-mean(Twb.prof[p.rows[[i]],z])
+  p.sd<-sd(Twb.prof[p.rows[[i]],z])
+
+  hist(Twb.prof[ptype.rows[[i]],1],prob=T, xlab='Temperature',breaks=20, main=print(paste(p.types[i], ' at ', (z-1),'m AGL')))
+  curve(dnorm(x, mean=p.mean, sd=p.sd), add=TRUE, col='blue', lwd=2)
 }
+
+
+#sample weather plot for each 
+ra<-sample(which(ptype=='RA'),1)
+sn<-sample(which(ptype=='SN'),1)
+fzra<-sample(which(ptype=='FZRA'),1)
+ip<-sample(which(ptype=='IP'),1)
+
+par(mfrow=c(1,1))
+step.size=seq(0,3000,by=100)
+step.size.matrix
+ptype.list<-list()
+ptype.list[[3]]<-which(ptype=='FZRA')
+ptype.list[[4]]<-which(ptype=='IP')
+ptype.list[[2]]<-which(ptype=='SN')
+ptype.list[[1]]<-which(ptype=='RA')
+
+chosen<-sapply(ptype.list,sample,size=1, simplify='array')
+plot(Twb.prof[1,],step.size,xlim=c(240,290),type='n',xlab='Temperature',ylab='m AGL', main='Sample Precipitation Plot')
+for ( i in 1:4){
+  lines(Twb.prof[chosen[i],],step.size,col=colors[i])
+}
+abline(v=273)
+legend('bottomleft', legend=c('RA','SN','FZRA','IP'),col=colors, lty=1)

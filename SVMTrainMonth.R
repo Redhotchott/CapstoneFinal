@@ -33,6 +33,41 @@ create.wt<-function(train.rows.mon){
   return(class.wts)
 }
 
+conf.mat.create<-function(tt, test.rows.mon,zz.set){
+  if(dim(tt)[1]==4 & dim(tt)[2]==4){
+    zz.set<-zz.set+tt
+  } else if (dim(tt)[1]==3 &dim(tt)[2]==3){
+    if(any(ptype[test.rows.mon]=='IP')){
+      if(any(rownames(tt)=='2')){
+        zz.set[2:4,2:4]<-zz.set[2:4,2:4]+tt
+      } else {
+        zz.set[c(1,3:4),2:4]<-zz.set[c(1,3:4),2:4]+tt
+      }
+    } else {
+      if(any(rownames(tt)=='2')){
+        zz.set[2:4,c(1,3:4)]<-zz.set[2:4,c(1,3:4)]+tt
+      } else {
+        zz.set[c(1,3:4),c(1,3:4)]<-zz.set[c(1,3:4),c(1,3:4)]+tt
+      }
+    }
+  } else if (dim(tt)[1]==3&dim(tt)[2]==2){
+    if(any(rownames(tt)=='1')){
+      zz.set[c(1,3:4),3:4]<-zz.set[c(1,3:4),3:4]+tt
+    } else {
+      zz.set[c(2:4),3:4]<-zz.set[c(2:4),3:4]+tt
+    }
+  } else if (dim(tt)[1]==4 & dim(tt)[2]==2){
+    zz.set[1:4,3:4]<-zz.set[1:4,3:4]+tt
+  } else if (dim(tt)[1]==4& dim(tt)[2]==3){
+    if(any(ptype[test.rows.mon]=='IP')){
+      zz.set[,2:4]<-zz.set[,2:4]+tt
+    } else {
+      zz.set[,c(1,3:4)]<-zz.set[,c(1,3:4)]+tt
+    }
+  }
+  return(zz.set)
+}
+
 ptype.fac<-as.factor(ptype)
 
 Twb.type<-cbind(Twb.prof,ptype.fac) %>% as.data.frame
@@ -164,24 +199,35 @@ for ( i in 1:12){
                                              probability=T, type='C-classification', 
                                              class.weights=c("1"=t.w[1], "2"=t.w[2], "3"=t.w[3],"4"=t.w[4]))
     }
-    res.mon[[j]] <- predict( model.mon[[j]], newdata=Twb.type[test.rows.mon,1:31])
+    res.mon[[j]] <- predict( model.mon[[j]], newdata=Twb.type[test.rows.mon,1:31], decision.values = T)
     tt<-table(pred = res.mon[[j]], true = Twb.type[test.rows.mon,32])
-    if(j==11){
+    if(j==11&i!=9){
       zz[,,i]<-tt
-    } else if (dim(tt)[1]==3 & dim(tt)[2]==2){
-      zz[c(1,3:4),3:4,i]<-zz[c(1,3:4),3:4,i]+tt
-    } else if (dim(tt)[2]<4 & any(ptype[train.rows.mon]=='IP')){
-      zz[2:4,2:4,i]<-zz[2:4,2:4,i]+tt
-    } else if (dim(tt)[2]<4 & any(ptype[train.rows.mon]=='FZRA')){
-      zz[c(1,3:4),c(1,3:4),i]<-zz[c(1,3:4),c(1,3:4),i]+tt
-    } else {zz[,,i]<-zz[,,i]+tt}
+    } else if (i==9&j==11){
+      zz[,,i]<-matrix(0,nrow=4,ncol=4)
+      zz[,,i]<-conf.mat.create(tt,test.rows.mon,zz[,,i])
+      
+    } else {
+      zz[,,i]<-conf.mat.create(tt,test.rows.mon,zz[,,i])
+    }
+#     if(j==11){
+#       zz[,,i]<-tt
+#     } else if (dim(tt)[1]==3 & dim(tt)[2]==2){
+#       zz[c(1,3:4),3:4,i]<-zz[c(1,3:4),3:4,i]+tt
+#     } else if (dim(tt)[2]<4 & any(ptype[train.rows.mon]=='IP')){
+#       zz[2:4,2:4,i]<-zz[2:4,2:4,i]+tt
+#     } else if (dim(tt)[2]<4 & any(ptype[train.rows.mon]=='FZRA')){
+#       zz[c(1,3:4),c(1,3:4),i]<-zz[c(1,3:4),c(1,3:4),i]+tt
+#     } else {zz[,,i]<-zz[,,i]+tt}
     
     model[[i]]<-model.mon
     res[[i]]<-res.mon
-    print(zz[,,i])
+    
+    # print(tt)
     
     ##FUNCTIONIZE zz
   }
+  print(zz[,,i])
 }
 
 
