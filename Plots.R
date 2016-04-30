@@ -24,6 +24,9 @@ train.rows<-list()
 test.labels<-list()
 train.lables<-list()
 test.rows<-list()
+
+
+
 ##########################Normality Density Plots
 for(i in 1:12){
   train.years=1996:2000+i-1
@@ -42,15 +45,51 @@ for(i in 1:12){
 ptype.rows<-list()
 colors<-c('green','blue', 'red', 'orange')
 
-z=1
-for(i in 1:4){
-  ptype.rows[[i]]<-p.rows[which(ptype==p.types[i])]
-  p.mean<-mean(Twb.prof[p.rows[[i]],z])
-  p.sd<-sd(Twb.prof[p.rows[[i]],z])
 
-  hist(Twb.prof[ptype.rows[[i]],1],prob=T, xlab='Temperature',breaks=20, main=print(paste(p.types[i], ' at ', (z-1),'m AGL')))
-  curve(dnorm(x, mean=p.mean, sd=p.sd), add=TRUE, col='blue', lwd=2)
+#graphhist <- function(){
+for(i in 1:16) {
+  
+  par(mfrow=c(1,4))
+  prof.rain = Twb.prof[ptype=='RA',col=i]
+  mean.rain = mean(prof.rain)
+  std.rain = sd(prof.rain)
+  
+  hist(prof.rain, breaks ="FD",xlab="Temperature", main= paste("Rain at Level",i),prob=T, ylim=c(0,0.08))#;axis(4,at=mean.rain,label=round(mean.rain,4))
+  curve(dnorm(x, mean=mean.rain, sd=std.rain), col=colors[1], lwd=2, add=TRUE, yaxt="n")
+  abline(v=mean.rain,col=colors[1], lwd=3)
+  
+  prof.snow = Twb.prof[ptype=='SN',col=i]
+  mean.snow = mean(prof.snow)
+  std.snow = sd(prof.snow)
+  
+  hist(prof.snow, breaks ="FD",xlab="Temperature", main= paste("Snow at Level",i),prob=T)
+  curve(dnorm(x, mean=mean.snow, sd=std.snow), col=colors[2], lwd=2, add=TRUE, yaxt="n")
+  abline(v=mean.snow, col=colors[2], lwd=3)
+  
+  prof.frzrain = Twb.prof[ptype=='FZRA',col=i]
+  mean.frzrain = mean(prof.frzrain)
+  std.frzrain = sd(prof.frzrain)
+  
+  hist(prof.frzrain, breaks ="FD",xlab="Temperature", main= paste("Freezing Rain at Level",i),prob=T)
+  curve(dnorm(x, mean=mean.frzrain, sd=std.frzrain), col=colors[3], lwd=2, add=TRUE, yaxt="n")
+  abline(v=mean.frzrain, col=colors[3], lwd=3)
+  
+  prof.ip = Twb.prof[ptype=='IP',col=i]
+  mean.ip = mean(prof.ip)
+  std.ip = sd(prof.ip)
+  
+  hist(prof.ip, breaks ="FD",xlab="Temperature", main= paste("Ice Pellets at Level",i),prob=T)
+  curve(dnorm(x, mean=mean.ip, sd=std.ip), col=colors[4], lwd=2, add=TRUE, yaxt="n")
+  abline(v=mean.ip, col=colors[4], lwd=3)
+ 
+  par(mfrow=c(1,4))
+  qqnorm(prof.rain, main = paste("Rain at Level ", i),col = "blue"); qqline(prof.rain)
+  qqnorm(prof.snow, main = paste("Snow at Level ", i), col = "darkgreen"); qqline(prof.snow)
+  qqnorm(prof.frzrain, main = paste("Freezing Rain at Level ", i), col = "purple"); qqline(prof.frzrain)
+  qqnorm(prof.ip, main = paste("Ice Pellets at Level ", i), col = "red"); qqline(prof.ip)
+
 }
+
 
 
 #sample weather plot for each 

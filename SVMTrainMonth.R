@@ -88,73 +88,75 @@ model<-list()
 model.mon<-list()
 res<-list()
 res.mon<-list()
+predicted<-array()
 
-cl<-makeCluster(6)
-registerDoSNOW(cl)
-list2<-foreach (i =1:12) %dopar%{
-  library( 'e1071' )
-  library('rpart')
-  library('dplyr')
-  library('parallel')
-  library(sn)
-  library(fields)
-  library(mvtnorm)
-  library(foreach)
-  library(doSNOW)
-  train.years=1996:2000+i-1
-  test.years=2000+i
-  
-  print(i)
-  
-  train.labels=head(which((years>=train.years[1] & months >8)),1):tail(which(years<=train.years[5]+1 & months <6),1)
-  test.labels=which((years==test.years & months>8) | (years==test.years+1 & months < 6))
-  
-  
-  train.rows=which(date.ind%in%train.labels)
-  test.rows=which(date.ind%in%test.labels)
-  
-  train.nn[i]=length(train.rows)
-  test.nn[i]=length(test.rows)
-  
-  #######################################################
-  ##Computing means and covariances for each precip type
-  #######################################################
-  for (j in unique(all.months)){
-    train.rows.mon=train.rows[(all.months[train.rows]==j)]
-    test.rows.mon=test.rows[(all.months[train.rows]==j)]
-  
-    
-    
-    #in order F, I, R, S
-    t.w<-create.wt(train.rows.mon)
-    
-    if(length(t.w)==3){model.mon[[j]]<- svm( ptype.df~., data=Twb.type[train.rows.mon,],
-                                             probability=T, type='C-classification', 
-                                             class.weights=c("1"=t.w[1], "2"=t.w[2], "3"=t.w[3]))
-    }
-    if(length(t.w)==4){model.mon[[j]]<- svm( ptype.df~., data=Twb.type[train.rows.mon,],
-                                             probability=T, type='C-classification', 
-                                             class.weights=c("1"=t.w[1], "2"=t.w[2], "3"=t.w[3],"4"=t.w[4]))}
-    model<-model.mon[[j]]
-    res.mon[[j]] <- predict( model, newdata=Twb.type[test.rows.mon,1:31])
-    zz[,,i]<-zz[,,i]+table(pred = res.mon[[j]], true = Twb.type[test.rows,32])
-  }
-  model[[i]]<-model.mon
-  res[[i]]<-res.mon
-  zz[,,i]
-  
-  #implement the SVM
-}
-stopCluster(cl)
-detach(Twb.type)
+# cl<-makeCluster(6)
+# registerDoSNOW(cl)
+# list2<-foreach (i =1:12) %dopar%{
+#   library( 'e1071' )
+#   library('rpart')
+#   library('dplyr')
+#   library('parallel')
+#   library(sn)
+#   library(fields)
+#   library(mvtnorm)
+#   library(foreach)
+#   library(doSNOW)
+#   train.years=1996:2000+i-1
+#   test.years=2000+i
+#   
+#   print(i)
+#   
+#   train.labels=head(which((years>=train.years[1] & months >8)),1):tail(which(years<=train.years[5]+1 & months <6),1)
+#   test.labels=which((years==test.years & months>8) | (years==test.years+1 & months < 6))
+#   
+#   
+#   train.rows=which(date.ind%in%train.labels)
+#   test.rows=which(date.ind%in%test.labels)
+#   
+#   train.nn[i]=length(train.rows)
+#   test.nn[i]=length(test.rows)
+#   
+#   #######################################################
+#   ##Computing means and covariances for each precip type
+#   #######################################################
+#   for (j in unique(all.months)){
+#     train.rows.mon=train.rows[(all.months[train.rows]==j)]
+#     test.rows.mon=test.rows[(all.months[train.rows]==j)]
+#   
+#     
+#     
+#     #in order F, I, R, S
+#     t.w<-create.wt(train.rows.mon)
+#     
+#     if(length(t.w)==3){model.mon[[j]]<- svm( ptype.df~., data=Twb.type[train.rows.mon,],
+#                                              probability=T, type='C-classification', 
+#                                              class.weights=c("1"=t.w[1], "2"=t.w[2], "3"=t.w[3]))
+#     }
+#     if(length(t.w)==4){model.mon[[j]]<- svm( ptype.df~., data=Twb.type[train.rows.mon,],
+#                                              probability=T, type='C-classification', 
+#                                              class.weights=c("1"=t.w[1], "2"=t.w[2], "3"=t.w[3],"4"=t.w[4]))}
+#     model<-model.mon[[j]]
+#     res.mon[[j]] <- predict( model, newdata=Twb.type[test.rows.mon,1:31])
+#     res<-as.numeric(levels(res))[res]+2
+#     
+#     predicted_class[replace]<-res
+#   }
+#   model[[i]]<-model.mon
+# 
+#   
+#   #implement the SVM
+# }
+# stopCluster(cl)
+# detach(Twb.type)
 
-acc=0
-tot=0
-for( i in 1:12){
-  acc=acc+sum(diag(list2[[i]]))
-  tot=tot+sum(list2[[i]])
-}
-acc/tot
+# acc=0
+# tot=0
+# for( i in 1:12){
+#   acc=acc+sum(diag(list2[[i]]))
+#   tot=tot+sum(list2[[i]])
+# }
+# acc/tot
 #V1 - weighted proportionally, gamma default (1/(datadim)), kernel=default (unknown),  cost default (1) 92.78%  --- 86.324%
 #V2 - weighted proportionally, gamma default (1/(datadim)), kernel=sigmoid,  cost default (1) 65.6% 
 #V2 - weighted proportionally, gamma default (1/(datadim)), kernel=poly  cost default (1) 65.6% 
