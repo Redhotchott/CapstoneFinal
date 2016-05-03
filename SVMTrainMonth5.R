@@ -34,7 +34,6 @@ create.wt<-function(train.rows.mon){
   return(class.wts)
 }
 
-<<<<<<< HEAD
 #FUNCTION 2 - this function calculates the BS for the model
 my.BS.func<-function(prob.hats){
   classes=1:4
@@ -53,8 +52,6 @@ my.BS.func<-function(prob.hats){
   
 }
 
-=======
->>>>>>> d70e20eb3d10223f24eaa8aa19200981ef093c22
 #preformating the data to be accepted by the svm function. 
 ptype.fac<-as.factor(ptype)
 Twb.type<-cbind(Twb.prof,ptype.fac) %>% as.data.frame
@@ -118,11 +115,7 @@ for ( i in 1:12){
                                   class.weights=c("1"=t.w[1], "2"=t.w[2], "3"=t.w[3],"4"=t.w[4]))
     }
     res.mon[[j]] <- predict( model.mon[[j]], newdata=Twb.type[test.rows.mon,1:31], probability=T)
-<<<<<<< HEAD
-    xx<-attr(res.mon[[j]], "probabilities") #pull out the probabilities
-=======
     xx<-attr(res.mon[[j]], "probabilities")[1:4,] #pull out the probabilities
->>>>>>> d70e20eb3d10223f24eaa8aa19200981ef093c22
     if(dim(xx)[2]>3){
       comp.prob<-rbind(comp.prob, xx[,order(colnames(xx))])
     } else {
@@ -130,11 +123,9 @@ for ( i in 1:12){
       yy[,order(colnames(xx))]<-xx[,order(colnames(xx))]
       comp.prob<-rbind(comp.prob, yy)  
     }
-<<<<<<< HEAD
     #tt<-table(pred= res.mon[[j]], true = Twb.type[test.rows.mon,32])
-=======
+
     tt<-table(pred = res.mon[[j]], true = Twb.type[test.rows.mon,32])
->>>>>>> d70e20eb3d10223f24eaa8aa19200981ef093c22
     comp.pred<-c(comp.pred,res.mon[[j]])
   }
   model[[i]]<-model.mon
@@ -142,7 +133,6 @@ for ( i in 1:12){
 }
 
 #calculating the BSS and BS scores from the last assignment. 
-<<<<<<< HEAD
 (conf.mat<-table(pred = comp.pred[-1], true = comp.true[-1]))
 sum(diag(conf.mat))/sum(conf.mat)
 comp.prob<-cbind(comp.prob[-1],comp.true[-1])
@@ -156,10 +146,9 @@ comp.prob<-cbind(comp.prob[-1],comp.true[-1])
 # 0.1321005 -  if bs ref =0.2200711
 # 0.1408025 if bs ref = 0.2223
 
-=======
 conf.mat<-table(pred = comp.pred[-1], true = comp.true[-1])
 comp.pred<-comp.pred[-1,]
->>>>>>> d70e20eb3d10223f24eaa8aa19200981ef093c22
+
 
 
 
