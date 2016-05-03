@@ -26,11 +26,10 @@ create.wt<-function(train.rows.mon){
   return(class.wts)
 }
 
-ptype.fac<-as.factor(ptype)
+ptype<-as.factor(ptype)
 
-Twb.type<-cbind(Twb.prof,ptype.fac) %>% as.data.frame
 colnames(Twb.type)<-c("H0","H1","H2", "H3","H4","H5","H6","H7", "H8","H9","H10","H11","H12","H13","H14","H15","H16","H17","H18","H19","H20","H21","H22","H23","H24","H25","H26","H27","H28","H29","H30","ptype.df")
-attach(Twb.type)
+
 
 set.seed(1492)
 
@@ -67,17 +66,17 @@ for ( i in 1:12){
     
     #in order F, I, R, S
     t.w<-create.wt(train.rows.mon)
-    Twb.type.red<-Twb.type[train.rows.mon,]
-    attach(Twb.type.red)
+    Twb.red<-Twb.prof[train.rows.mon,]
     ctrl <- trainControl(method="repeatedcv",   # 10fold cross validation
                          repeats=5,		    # do 5 repititions of cv
                          summaryFunction=multiClassSummary,	# Use AUC to pick the best model
                          classProbs=TRUE)
     
-    svm.tune <- train(ptype.df~ . , data=Twb.type.red,
-                      method = "svmRadial",   # Radial kernel
+    svm.tune <- train(x=Twb.red, y=ptype[train.rows.mon],
+                      method = "svmRadialWeights",   # Radial kernel
                       tuneLength = 3,					# 9 values of the cost function
                       preProc = c("center","scale"),  # Center and scale data #I CAN ADD PCA ON THIS
+                      class.weights=c("1"=t.w[1], "2"=t.w[2], "3"=t.w[3],"4"=t.w[4]),
                       trControl=ctrl)
     
     detach(Twb.type.red)
@@ -194,5 +193,8 @@ svm.tune
 # ROC was used to select the optimal model using  the largest value.
 # The final values used for the model were sigma = 0.01 and C = 1.25. 
 
-
+library(caret)
+ctrl <- trainControl(method = "cv", savePred=T)
+mod <- train(Sepal.Length~., data=iris, method = "svmLinear", trControl = ctrl)
+head(mod$pred)
 
