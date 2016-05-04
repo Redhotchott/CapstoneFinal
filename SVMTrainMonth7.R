@@ -1,7 +1,7 @@
 rm(list=ls())
-# SVM by Month. Radial Basis Function. Classes weighted evenly. Probs in output!
-# Overall Accuracy = 0.9403306
-# MODEL 2 
+# SVM by Month. Radial Basis Function. Classes weighted evenly. Probs in output! Cost = 5
+# Overall Accuracy = 
+# MODEL 3
 library( 'e1071' )
 library('rpart')
 library('dplyr')
@@ -37,7 +37,6 @@ create.wt<-function(train.rows.mon){
 my.BS.func<-function(prob.hats){
   classes=1:4
   
-
   BS=0
   for(i in 1:4){
     matches=which(prob.hats[,5]==classes[i])
@@ -103,14 +102,11 @@ for ( i in 1:12){
     
     if(length(t.w)==3){
       if(any(ptype[train.rows.mon]=='IP')){model.mon[[j]]<- svm( ptype.df~., data=Twb.type[train.rows.mon,],
-                                                                 probability=T, type='C-classification', 
-                                                                 class.weights=c("2"=t.w[1], "3"=t.w[2], "4"=t.w[3]))
+                                                                 probability=T, type='C-classification', cost=5)
       } else {model.mon[[j]]<- svm( ptype.df~., data=Twb.type[train.rows.mon,],
-                                    probability=T, type='C-classification', 
-                                    class.weights=c("1"=t.w[1], "3"=t.w[2], "4"=t.w[3]))}
+                                    probability=T, type='C-classification',cost=5)}
     } else {model.mon[[j]]<- svm( ptype.df~., data=Twb.type[train.rows.mon,],
-                                  probability=T, type='C-classification', 
-                                  class.weights=c("1"=t.w[1], "2"=t.w[2], "3"=t.w[3],"4"=t.w[4]))
+                                  probability=T, type='C-classification', cost=5)
     }
     res.mon[[j]] <- predict( model.mon[[j]], newdata=Twb.type[test.rows.mon,1:31], probability=T)
     xx<-attr(res.mon[[j]], "probabilities") #pull out the probabilities
@@ -122,7 +118,7 @@ for ( i in 1:12){
       comp.prob<-rbind(comp.prob, yy)  
     }
     #tt<-table(pred= res.mon[[j]], true = Twb.type[test.rows.mon,32])
-
+    
     tt<-table(pred = res.mon[[j]], true = Twb.type[test.rows.mon,32])
     comp.pred<-c(comp.pred,res.mon[[j]])
   }
@@ -130,42 +126,12 @@ for ( i in 1:12){
   res[[i]]<-res.mon
 }
 
-comp.prob<-matrix(NA, nrow=1,ncol=4)
-for(i in 1:12){
-  train.years=1996:2000+i-1
-  test.years=2000+i
-  
-  print(paste('Training Set: ', i))
-  
-  train.labels=head(which((years>=train.years[1] & months >8)),1):tail(which(years<=train.years[5]+1 & months <6),1)
-  test.labels=which((years==test.years & months>8) | (years==test.years+1 & months < 6))
-  
-  
-  train.rows=which(date.ind%in%train.labels)
-  test.rows=which(date.ind%in%test.labels)
-  
-  train.nn[i]=length(train.rows)
-  test.nn[i]=length(test.rows)
-  
-  for(j in unique(all.months)){
-    test.rows.mon=test.rows[which(all.months[test.rows]==j)]
-    res.mon[[j]] <- predict( model.mon[[j]], newdata=Twb.type[test.rows.mon,1:31], probability=T)
-    xx<-attr(res.mon[[j]], "probabilities") #pull out the probabilities
-    if(dim(xx)[2]>3){
-      comp.prob<-rbind(comp.prob, xx[,order(colnames(xx))])
-    } else {
-      yy<-matrix(0,nrow=dim(xx)[1],ncol=4)
-      yy[,order(colnames(xx))]<-xx[,order(colnames(xx))]
-      comp.prob<-rbind(comp.prob, yy)  
-    }
-  }
-}
 #calculating the BSS and BS scores from the last assignment. 
 (conf.mat<-table(pred = comp.pred[-1], true = comp.true[-1]))
 sum(diag(conf.mat))/sum(conf.mat)
 comp.prob<-cbind(comp.prob[-1,],comp.true[-1])
 
-(BS<-my.BS.func(comp.prob)) # m2=0.1909996
-1-BS/c(0.2200711,0.2223) #0.5918190 0.5959117
-
+(BS<-my.BS.func(comp.prob)) # m3=0.1756288
+1-BS/c(0.2200711,0.2223) # m3=0.2019451 0.2099469
+ 
 
