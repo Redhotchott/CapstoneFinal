@@ -159,3 +159,5 @@ comp.prob<-cbind(comp.prob[-1,],comp.true[-1])
 (BS<-my.BS.func(comp.prob)) # 
 1-BS/c(0.2200711,0.2223) #
 
+
+
