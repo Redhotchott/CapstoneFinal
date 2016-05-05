@@ -1,7 +1,7 @@
 rm(list=ls())
 # SVM by Month. Radial Basis Function. Classes weighted evenly. Probs in output! Cost =Even
 # Overall Accuracy =
-# MODEL 3
+# MODEL 
 library( 'e1071' )
 library('rpart')
 library('dplyr')
@@ -131,7 +131,9 @@ for ( i in 1:12){
 sum(diag(conf.mat))/sum(conf.mat)
 comp.prob<-cbind(comp.prob[-1,],comp.true[-1])
 
-(BS<-my.BS.func(comp.prob)) # m3=0.1756288
-1-BS/c(0.2200711,0.2223) # m3=0.2019451 0.2099469
+(BS<-my.BS.func(comp.prob)) # m3=
+1-BS/c(0.2200711,0.2223) # m3=
+
+
 
 
