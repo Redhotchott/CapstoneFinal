@@ -1,6 +1,6 @@
 rm(list=ls())
 # SVM by Month. Radial Basis Function. Classes weighted evenly. Probs in output! Cost = 5
-# Overall Accuracy = 
+# Overall Accuracy = 95.41%
 # MODEL 3
 library( 'e1071' )
 library('rpart')
