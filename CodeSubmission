@@ -1,0 +1,597 @@
+rm(list=ls())
+
+#load libraries
+library( 'e1071' )
+library('rpart')
+library('plyr')
+library('dplyr')
+library('parallel')
+library(sn)
+library(fields)
+library(mvtnorm)
+library(foreach)
+library(doSNOW)
+library(ggplot2)
+library(caret)
+library(plot3D)
+load('predictors.Rdata')
+
+#FUNCTION 1 - this function creates a wts vector to use as the prior probs
+create.wt<-function(train.rows.mon){
+  rain.rows=which(ptype[train.rows.mon]=="RA")
+  snow.rows=which(ptype[train.rows.mon]=="SN")
+  pellet.rows=which(ptype[train.rows.mon]=="IP")
+  ice.rows=which(ptype[train.rows.mon]=="FZRA")
+  
+  r.l<-length(rain.rows)
+  s.l<-length(snow.rows)
+  p.l<-length(pellet.rows)
+  i.l<-length(ice.rows)
+  p.lengths<-c(i.l,p.l,r.l,s.l)
+  p.class<-p.lengths!=0
+  
+  ref<-which(p.lengths==min(p.lengths[p.lengths!=0]))
+  class.wts<-p.lengths[ref]/p.lengths[p.class]
+  return(class.wts)
+}
+
+#FUNCTION 2 - this function calculates the BS for the model
+my.BS.func<-function(prob.hats){
+  classes=1:4
+  BS=0
+  for(i in 1:4){
+    matches=which(prob.hats[,5]==classes[i])
+    o.ik=rep(0,length(prob.hats[,5]))
+    o.ik[matches]=rep(1,length(matches))
+    p.ik=prob.hats[,i]
+    BS=BS+sum((p.ik-o.ik)^2,na.rm=T)
+  }
+  return(BS/length(prob.hats[,5]))
+}
+
+#FUNCTION 4 doing the princ comp dim red of the observations
+princ.comp<-function(p.rows){
+  lister<-list()
+  pc.rain<-princomp(Twb.prof[p.rows,],cor=T)
+  S<-cov(Twb.prof[p.rows,])
+  lin.combo<-eigen(S)$vectors[,1:4]
+  new.dim<-Twb.prof[p.rows,]%*%lin.combo
+  lister[[1]]<-new.dim
+  lister[[2]]<-lin.combo
+  return(lister)
+}
+
+
+#preformating the data to be accepted by the svm model functions
+ptype.fac<-as.factor(ptype)
+Twb.type<-cbind(Twb.prof,ptype.fac) %>% as.data.frame
+colnames(Twb.type)<-c("H0","H1","H2", "H3","H4","H5","H6","H7", "H8","H9","H10","H11","H12","H13","H14","H15","H16","H17","H18","H19","H20","H21","H22","H23","H24","H25","H26","H27","H28","H29","H30","ptype.df")
+Twb.type[,32]<-as.factor(Twb.type[,32])
+
+#These make it easier to determine training sets and months for reference in the methods.
+cols=1:31
+years=as.numeric(substr(dates,1,4))
+months=as.numeric(substr(dates,5,6))
+all.months=as.numeric(substr(dates[date.ind],5,6))
+
+####################################################
+###                  SVM MODELS                  ### 
+####################################################
+
+# SVM MODEL 1 
+# SVM by Month. Radial Basis Function. Class weight 1. Probs in output!
+
+#preallocatting used vectors
+test.nn=array() #stores the number of obs in the testing set
+train.nn=array() #stores the number of obs in the training set
+model<-list() #stores models used in a training set
+model.mon<-list() #stores the model of the month, which are then stored in the above list. 
+res<-list() #stores the predictions of a training set on the models from above
+res.mon<-list() #stores the predictions from a given month of a given testing set, then stored by testing set in above list
+comp.true<-array() # stores the true classes of the ptypes
+comp.pred<-array() # stores the predicted values of the ptypes based on the model
+comp.prob<-matrix(NA, nrow=1,ncol=4) # stores the probabilistic classification of the testing observations
+
+for ( i in 1:12){
+  #determining the observations in the desired training and testing set
+  train.years=1996:2000+i-1
+  test.years=2000+i
+  
+  print(paste('Training Set: ', i))
+  
+  train.labels=head(which((years>=train.years[1] & months >8)),1):tail(which(years<=train.years[5]+1 & months <6),1)
+  test.labels=which((years==test.years & months>8) | (years==test.years+1 & months < 6))
+  
+  
+  train.rows=which(date.ind%in%train.labels) 
+  test.rows=which(date.ind%in%test.labels)
+  
+  train.nn[i]=length(train.rows)
+  test.nn[i]=length(test.rows)
+  
+
+  for (j in unique(all.months)){
+    # determining the observations in each month based on those in the desired training/testing set to compute 
+    # the desired model for the month of the given training set and the ones that will be classified based on the 
+    # given model
+    print(paste('Month: ', j))
+    train.rows.mon=train.rows[which(all.months[train.rows]==j)]
+    test.rows.mon=test.rows[which(all.months[test.rows]==j)]
+    comp.true<-c(comp.true,Twb.type[test.rows.mon,32])
+    
+    #creating the model
+    model.mon[[j]]<- svm( ptype.df~., data=Twb.type[train.rows.mon,], probability=T, type='C-classification')
+    
+    #classifying the given observations based on the above model. 
+    res.mon[[j]] <- predict( model.mon[[j]], newdata=Twb.type[test.rows.mon,1:31], probability=T)
+    
+    #pulling out the probablistic classification and adding them to the overall probabilistic matrix
+    xx<-attr(res.mon[[j]], "probabilities") #pull out the probabilities
+    if(dim(xx)[2]>3){
+      comp.prob<-rbind(comp.prob, xx[,order(colnames(xx))])
+    } else {
+      yy<-matrix(0,nrow=dim(xx)[1],ncol=4)
+      yy[,order(colnames(xx))]<-xx[,order(colnames(xx))]
+      comp.prob<-rbind(comp.prob, yy)  
+    }
+    
+    # storing the given new predictions
+    comp.pred<-c(comp.pred,res.mon[[j]])
+  }
+  model[[i]]<-model.mon #storing models and predictions in case of future reference
+  res[[i]]<-res.mon
+}
+
+# Confusion matrices and Overall accuracy
+(conf.mat<-table(pred = comp.pred[-1], true = comp.true[-1]))
+sum(diag(conf.mat))/sum(conf.mat)
+
+# Calculating the BS and BSS scores 
+comp.prob<-cbind(comp.prob[-1,],comp.true[-1])
+(BS<-my.BS.func(comp.prob)) 
+1-BS/0.2200711  #0.2200711 is the climatological BS score
+
+# SVM MODEL 2 
+# SVM by Month. Radial Basis Function. Classes weighted unevenly. Probs in output!
+
+#preallocatting used vectors
+test.nn=array()
+train.nn=array()
+model<-list()
+model.mon<-list()
+res<-list()
+res.mon<-list()
+comp.true<-array()
+comp.pred<-array()
+comp.prob<-matrix(NA, nrow=1,ncol=4)
+
+for ( i in 1:12){
+  #determining the observations in the desired training and testing set
+  train.years=1996:2000+i-1
+  test.years=2000+i
+  
+  print(paste('Training Set: ', i))
+  
+  train.labels=head(which((years>=train.years[1] & months >8)),1):tail(which(years<=train.years[5]+1 & months <6),1)
+  test.labels=which((years==test.years & months>8) | (years==test.years+1 & months < 6))
+  
+  
+  train.rows=which(date.ind%in%train.labels) 
+  test.rows=which(date.ind%in%test.labels)
+  
+  train.nn[i]=length(train.rows)
+  test.nn[i]=length(test.rows)
+  
+
+  for (j in unique(all.months)){
+    # determining the observations in each month based on those in the desired training/testing set to compute 
+    # the desired model for the month of the given training set and the ones that will be classified based on the 
+    # given model
+    print(paste('Month: ', j))
+    train.rows.mon=train.rows[which(all.months[train.rows]==j)]
+    test.rows.mon=test.rows[which(all.months[test.rows]==j)]
+    comp.true<-c(comp.true,Twb.type[test.rows.mon,32])
+    
+    #in order F, I, R, S creating the unevenly weighted classes
+    t.w<-create.wt(train.rows.mon)
+    
+    # calculating the model based on the class weigths. The if statements take care of months where only 3 precip types are seen
+    if(length(t.w)==3){
+      if(any(ptype[train.rows.mon]=='IP')){model.mon[[j]]<- svm( ptype.df~., data=Twb.type[train.rows.mon,],
+                                                                 probability=T, type='C-classification', 
+                                                                 class.weights=c("2"=t.w[1], "3"=t.w[2], "4"=t.w[3]))
+      } else {model.mon[[j]]<- svm( ptype.df~., data=Twb.type[train.rows.mon,],
+                                    probability=T, type='C-classification', 
+                                    class.weights=c("1"=t.w[1], "3"=t.w[2], "4"=t.w[3]))}
+    } else {model.mon[[j]]<- svm( ptype.df~., data=Twb.type[train.rows.mon,],
+                                  probability=T, type='C-classification', 
+                                  class.weights=c("1"=t.w[1], "2"=t.w[2], "3"=t.w[3],"4"=t.w[4]))
+    }
+    
+    #classifying the given observations based on the above model. 
+    res.mon[[j]] <- predict( model.mon[[j]], newdata=Twb.type[test.rows.mon,1:31], probability=T)
+    
+    #pulling out the probablistic classification and adding them to the overall probabilistic matrix
+    xx<-attr(res.mon[[j]], "probabilities") #pull out the probabilities
+    if(dim(xx)[2]>3){
+      comp.prob<-rbind(comp.prob, xx[,order(colnames(xx))])
+    } else {
+      yy<-matrix(0,nrow=dim(xx)[1],ncol=4)
+      yy[,order(colnames(xx))]<-xx[,order(colnames(xx))]
+      comp.prob<-rbind(comp.prob, yy)  
+    }
+    
+    # storing the given new predictions
+    comp.pred<-c(comp.pred,res.mon[[j]])
+  }
+  model[[i]]<-model.mon #storing models and predictions in case of future reference
+  res[[i]]<-res.mon
+}
+
+# Confusion matrices and overall accuracy
+(conf.mat<-table(pred = comp.pred[-1], true = comp.true[-1]))
+sum(diag(conf.mat))/sum(conf.mat)
+
+# Calculating the BS and BSS scores 
+comp.prob<-cbind(comp.prob[-1,],comp.true[-1])
+(BS<-my.BS.func(comp.prob)) 
+1-BS/0.2200711  #0.2200711 is the climatological BS score
+
+# SVM Model 3 
+# SVM Radial Basis Function, evenly weighted classes. Optimizes cost hyperparameters
+
+#preallocatting used vectors
+test.nn=array()
+train.nn=array()
+model<-list()
+model.mon<-list()
+res<-list()
+res.mon<-list()
+comp.true<-array()
+comp.pred<-array()
+comp.prob<-matrix(NA, nrow=1,ncol=4)
+
+for ( i in 1:12){
+  # determining the observations in the desired training and testing set
+  train.years=1996:2000+i-1
+  test.years=2000+i
+  
+  print(paste('Training Set: ', i))
+  
+  train.labels=head(which((years>=train.years[1] & months >8)),1):tail(which(years<=train.years[5]+1 & months <6),1)
+  test.labels=which((years==test.years & months>8) | (years==test.years+1 & months < 6))
+  
+  
+  train.rows=which(date.ind%in%train.labels) 
+  test.rows=which(date.ind%in%test.labels)
+  
+  train.nn[i]=length(train.rows)
+  test.nn[i]=length(test.rows)
+  
+
+  for (j in unique(all.months)){
+    # determining the observations in each month based on those in the desired training/testing set to compute 
+    # the desired model for the month of the given training set and the ones that will be classified based on the 
+    # given model
+    print(paste('Month: ', j))
+    train.rows.mon=train.rows[which(all.months[train.rows]==j)]
+    test.rows.mon=test.rows[which(all.months[test.rows]==j)]
+    comp.true<-c(comp.true,Twb.type[test.rows.mon,32])
+    
+    # Finding the optimal SVM based on cost values in 2^(0:4)  
+     model.mon[[j]]<- best.tune(svm,ptype.df~., data=Twb.type[train.rows.mon,],
+                                probability=T, type='C-classification',  ranges = list(cost = 2^(0:4)))
+
+    #classifying the given observations based on the above model. 
+    res.mon[[j]] <- predict( model.mon[[j]], newdata=Twb.type[test.rows.mon,1:31], probability=T)
+    
+    #pulling out the probablistic classification and adding them to the overall probabilistic matrix
+    xx<-attr(res.mon[[j]], "probabilities") #pull out the probabilities
+    if(dim(xx)[2]>3){
+      comp.prob<-rbind(comp.prob, xx[,order(colnames(xx))])
+    } else {
+      yy<-matrix(0,nrow=dim(xx)[1],ncol=4)
+      yy[,order(colnames(xx))]<-xx[,order(colnames(xx))]
+      comp.prob<-rbind(comp.prob, yy)  
+    }
+    
+    # storing the given new predictions
+    comp.pred<-c(comp.pred,res.mon[[j]])
+  }
+  model[[i]]<-model.mon #storing models and predictions in case of future reference
+  res[[i]]<-res.mon
+}
+
+# Confusion matrices and overall accuracy
+(conf.mat<-table(pred = comp.pred[-1], true = comp.true[-1]))
+sum(diag(conf.mat))/sum(conf.mat)
+
+# Calculating the BS and BSS scores 
+comp.prob<-cbind(comp.prob[-1,],comp.true[-1])
+(BS<-my.BS.func(comp.prob)) 
+1-BS/0.2200711 
+
+# SVM Model 4
+# SVM Radial Basis Function, Unevenly weighted classes. Optimizes cost hyperparameters
+
+#preallocatting used vectors
+test.nn=array()
+train.nn=array()
+model<-list()
+model.mon<-list()
+res<-list()
+res.mon<-list()
+comp.true<-array()
+comp.pred<-array()
+comp.prob<-matrix(NA, nrow=1,ncol=4)
+
+for ( i in 1:12){
+  # determining the observations in the desired training and testing set
+  train.years=1996:2000+i-1
+  test.years=2000+i
+  
+  print(paste('Training Set: ', i))
+  
+  train.labels=head(which((years>=train.years[1] & months >8)),1):tail(which(years<=train.years[5]+1 & months <6),1)
+  test.labels=which((years==test.years & months>8) | (years==test.years+1 & months < 6))
+  
+  
+  train.rows=which(date.ind%in%train.labels) 
+  test.rows=which(date.ind%in%test.labels)
+  
+  train.nn[i]=length(train.rows)
+  test.nn[i]=length(test.rows)
+  
+
+  for (j in unique(all.months)){
+    # determining the observations in each month based on those in the desired training/testing set to compute 
+    # the desired model for the month of the given training set and the ones that will be classified based on the 
+    # given model
+    print(paste('Month: ', j))
+    train.rows.mon=train.rows[which(all.months[train.rows]==j)]
+    test.rows.mon=test.rows[which(all.months[test.rows]==j)]
+    comp.true<-c(comp.true,Twb.type[test.rows.mon,32])
+    
+    #in order F, I, R, S creating the unevenly weighted classes
+    t.w<-create.wt(train.rows.mon)
+    
+    # Finding the optimal SVM based on cost values in 2^(0:4) and the custom class weights
+    if(length(t.w)==3){
+      if(any(ptype[train.rows.mon]=='IP')){model.mon[[j]]<- best.tune(svm,ptype.df~., data=Twb.type[train.rows.mon,],
+                                                                      probability=T, type='C-classification',  class.weights=c("2"=t.w[1], "3"=t.w[2], "4"=t.w[3]),ranges = list(cost = 2^(0:4)))
+      } else {model.mon[[j]]<- best.tune(svm,ptype.df~., data=Twb.type[train.rows.mon,],
+                                         probability=T, type='C-classification', class.weights=c("1"=t.w[1], "3"=t.w[2], "4"=t.w[3]), ranges = list(cost = 2^(0:4)))}
+    } else {model.mon[[j]]<- best.tune(svm,ptype.df~., data=Twb.type[train.rows.mon,],
+                                       probability=T, type='C-classification',   class.weights=c("1"=t.w[1], "2"=t.w[2], "3"=t.w[3],"4"=t.w[4]),ranges = list(cost = 2^(0:4)))
+    }
+    
+    #classifying the given observations based on the above model. 
+    res.mon[[j]] <- predict( model.mon[[j]], newdata=Twb.type[test.rows.mon,1:31], probability=T)
+    
+    #pulling out the probablistic classification and adding them to the overall probabilistic matrix
+    xx<-attr(res.mon[[j]], "probabilities") #pull out the probabilities
+    if(dim(xx)[2]>3){
+      comp.prob<-rbind(comp.prob, xx[,order(colnames(xx))])
+    } else {
+      yy<-matrix(0,nrow=dim(xx)[1],ncol=4)
+      yy[,order(colnames(xx))]<-xx[,order(colnames(xx))]
+      comp.prob<-rbind(comp.prob, yy)  
+    }
+    
+    # storing the given new predictions
+    comp.pred<-c(comp.pred,res.mon[[j]])
+  }
+  model[[i]]<-model.mon #storing models and predictions in case of future reference
+  res[[i]]<-res.mon
+}
+
+# Confusion matrices and overall accuracy
+(conf.mat<-table(pred = comp.pred[-1], true = comp.true[-1]))
+sum(diag(conf.mat))/sum(conf.mat)
+
+# Calculating the BS and BSS scores 
+comp.prob<-cbind(comp.prob[-1,],comp.true[-1])
+(BS<-my.BS.func(comp.prob)) 
+1-BS/0.2200711 
+
+####################################################
+###               DIM REDUCT MODELS              ### 
+####################################################
+
+# DIM REDUC 1
+# DIM REDUC Based on Ptypes over the 12 training periods
+
+# Building a Prior Probability Diagram to Use in Future
+prior.probs=array(0,dim=c(length(stations),length(unique(months)),4))
+for(i in 1:length(stations)){
+  print(i)	
+  for(j in 1:length(unique(months))){
+    mon=sort(unique(months))[j]
+    #Finding the right stations	
+    station.i=which(station.ind==i)
+    #Finding the right months
+    month.labels=which(months==mon)
+    month.rows=which(date.ind%in%month.labels)
+    #Getting the right stations AND months
+    rows.needed=intersect(station.i,month.rows)
+    
+    rain.nn=length(which(ptype[rows.needed]=="RA"))
+    snow.nn=length(which(ptype[rows.needed]=="SN"))
+    pellet.nn=length(which(ptype[rows.needed]=="FZRA"))
+    ice.nn=length(which(ptype[rows.needed]=="IP"))
+    
+    prior.probs[i,j,1:4]=c(rain.nn,snow.nn,pellet.nn,ice.nn)/length(rows.needed)		
+  }
+}
+
+test.nn=array()
+ALL.testing.rows=NULL
+for(i in 1:12){
+  test.years=2000+i
+  test.labels=which(years==test.years & months>8 | (years==test.years+1 & months < 6))
+  test.rows=which(date.ind%in%test.labels)
+  test.nn[i]=length(test.rows)
+  ALL.testing.rows=c(ALL.testing.rows,test.rows)
+}
+
+prob.hats=data.frame(matrix(0,nrow=sum(test.nn),ncol=5))
+colnames(prob.hats)=c("prob.ra","prob.sn","prob.fzra","prob.ip","observed")
+
+# Preallocating arrays and lists for the mean and covariance structures
+train.nn=array()
+test.nn=array()
+
+mean.train=list()
+mean.train[[1]]=matrix(0,nrow=4,ncol=12)
+mean.train[[2]]=matrix(0,nrow=4,ncol=12)
+mean.train[[3]]=matrix(0,nrow=4,ncol=12)
+mean.train[[4]]=matrix(0,nrow=4,ncol=12)
+names(mean.train)=c("ra","sn","fzra","ip")
+
+cov.train=list()
+cov.train[[1]]=list()
+cov.train[[2]]=list()
+cov.train[[3]]=list()
+cov.train[[4]]=list()
+names(cov.train)=c("ra","sn","fzra","ip")
+riq<-list() #order R S F I (Rows in question) # to be able to use lapply later 
+
+ind=0 # to fill out the prob hats matrix in order. 
+
+for ( i in 1:12){
+  # determining the observations in the desired training and testing set
+  train.years=1996:2000+i-1
+  test.years=2000+i
+  
+  print(paste('Training Set: ', i))
+  
+  train.labels=head(which((years>=train.years[1] & months >8)),1):tail(which(years<=train.years[5]+1 & months <6),1)
+  test.labels=which((years==test.years & months>8) | (years==test.years+1 & months < 6))
+  
+  
+  train.rows=which(date.ind%in%train.labels) 
+  test.rows=which(date.ind%in%test.labels)
+  
+  train.nn[i]=length(train.rows)
+  test.nn[i]=length(test.rows)
+  
+  riq[[1]]<-which(ptype[train.rows]=="RA")
+  riq[[2]]<-which(ptype[train.rows]=="SN")
+  riq[[3]]<-which(ptype[train.rows]=="FZRA")
+  riq[[4]]<-which(ptype[train.rows]=="IP")
+  
+  new.dim<-lapply(riq,princ.comp)
+  
+  mean.train[[1]][,i]=apply(new.dim[[1]][[1]],2,mean)
+  mean.train[[2]][,i]=apply(new.dim[[2]][[1]],2,mean)
+  mean.train[[3]][,i]=apply(new.dim[[3]][[1]],2,mean) #apply(Twb.prof[train.rows[fzra.rows],cols],2,mean)
+  mean.train[[4]][,i]=apply(new.dim[[4]][[1]],2,mean)
+  
+  cov.train[[1]][[i]]=cov(new.dim[[1]][[1]])
+  cov.train[[2]][[i]]=cov(new.dim[[2]][[1]])
+  cov.train[[3]][[i]]=cov(new.dim[[3]][[1]])
+  cov.train[[4]][[i]]=cov(new.dim[[4]][[1]])
+  
+  #######################################################
+  ##Computing probabilities of observations belonging to
+  ##each of the 4 groups
+  #######################################################
+  
+  for(j in 1:test.nn[i]){
+    if(j%%1000==0){print(j)}
+    ind=ind+1
+    
+    station.j=station.ind[test.rows[j]]
+    mon.j=months[date.ind[test.rows[j]]]
+    mon.col=which(sort(unique(months))==mon.j)
+    
+    #baseline
+    pi.smk=prior.probs[station.j,mon.col,]
+    pi.den.rain=pi.smk[1]*dmvnorm((Twb.prof[test.rows[j],cols]%*%new.dim[[1]][[2]]), mean.train[[1]][,i], cov.train[[1]][[i]])
+    pi.den.snow=pi.smk[2]*dmvnorm((Twb.prof[test.rows[j],cols]%*%new.dim[[2]][[2]]), mean.train[[2]][,i], cov.train[[2]][[i]])
+    pi.den.fzra=pi.smk[3]*dmvnorm((Twb.prof[test.rows[j],cols]%*%new.dim[[3]][[2]]), mean.train[[3]][,i], cov.train[[3]][[i]])
+    pi.den.ip=pi.smk[4]*dmvnorm((Twb.prof[test.rows[j],cols]%*%new.dim[[4]][[2]]), mean.train[[4]][,i], cov.train[[4]][[i]])
+
+    collection=c(pi.den.rain,pi.den.snow,pi.den.fzra,pi.den.ip)
+    prob.hats[ind,1:4]=collection/sum(collection)
+    prob.hats[ind,5]=ptype[test.rows[j]]
+  }
+}
+
+# Pulling out the predicted class based on the probabilities.
+pred<-apply(prob.hats[,1:4], 1, which.max)
+
+# Reformatting the observed from numeric to character classes so that the confusion matrix works properly
+observed=prob.hats[,5]
+observed[which(prob.hats[,5]=="RA")]=rep(1,length(which(prob.hats[,5]=="RA")))
+observed[which(prob.hats[,5]=="SN")]=rep(2,length(which(prob.hats[,5]=="SN")))
+observed[which(prob.hats[,5]=="FZRA")]=rep(3,length(which(prob.hats[,5]=="FZRA")))
+observed[which(prob.hats[,5]=="IP")]=rep(4,length(which(prob.hats[,5]=="IP")))
+observed=as.numeric(observed)
+
+# Confusion matrices and overall accuracy
+(conf.mat<-table(pred = pred, true = observed))
+sum(diag(conf.mat))/sum(conf.mat)
+
+
+# Calculating the BS and BSS scores 
+BS=0
+(BS<-my.BS.func(prob.hats)) 
+1-BS/0.2200711 
+  
+  
+# DIM REDUC 2
+# DIM REDUC Based on 12 training periods  using SVM 
+
+#preallocatting used vectors
+test.nn=array()
+train.nn=array()
+model<-list()
+model.mon<-list()
+res<-list()
+res.mon<-list()
+comp.true<-array()
+comp.pred<-array()
+comp.prob<-matrix(NA, nrow=1,ncol=4)
+
+# Building a Prior Probability Diagram to Use in Future
+prior.probs=array(0,dim=c(length(stations),length(unique(months)),4))
+for(i in 1:length(stations)){
+  print(i)	
+  for(j in 1:length(unique(months))){
+    mon=sort(unique(months))[j]
+    #Finding the right stations	
+    station.i=which(station.ind==i)
+    #Finding the right months
+    month.labels=which(months==mon)
+    month.rows=which(date.ind%in%month.labels)
+    #Getting the right stations AND months
+    rows.needed=intersect(station.i,month.rows)
+    
+    rain.nn=length(which(ptype[rows.needed]=="RA"))
+    snow.nn=length(which(ptype[rows.needed]=="SN"))
+    pellet.nn=length(which(ptype[rows.needed]=="FZRA"))
+    ice.nn=length(which(ptype[rows.needed]=="IP"))
+    
+    prior.probs[i,j,1:4]=c(rain.nn,snow.nn,pellet.nn,ice.nn)/length(rows.needed)		
+  }
+}
+
+
+test.nn=array()
+ALL.testing.rows=NULL
+for(i in 1:12){
+  test.years=2000+i
+  test.labels=which(years==test.years & months>8 | (years==test.years+1 & months < 6))
+  test.rows=which(date.ind%in%test.labels)
+  test.nn[i]=length(test.rows)
+  ALL.testing.rows=c(ALL.testing.rows,test.rows)
+}
+
+train.nn=array()
+test.nn=array()
+
+ind=0
+
+
+
