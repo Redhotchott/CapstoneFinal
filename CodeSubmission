@@ -588,10 +588,76 @@ for(i in 1:12){
   ALL.testing.rows=c(ALL.testing.rows,test.rows)
 }
 
+
+# Preallocating arrays and lists for the mean and covariance structures
 train.nn=array()
 test.nn=array()
 
-ind=0
+ind=0 # to fill out the prob hats matrix in order. 
 
+
+for ( i in 1:12){
+  # determining the observations in the desired training and testing set
+  train.years=1996:2000+i-1
+  test.years=2000+i
+  
+  print(paste('Training Set: ', i))
+  
+  train.labels=head(which((years>=train.years[1] & months >8)),1):tail(which(years<=train.years[5]+1 & months <6),1)
+  test.labels=which((years==test.years & months>8) | (years==test.years+1 & months < 6))
+  
+  
+  train.rows=which(date.ind%in%train.labels) 
+  test.rows=which(date.ind%in%test.labels)
+  
+  train.nn[i]=length(train.rows)
+  test.nn[i]=length(test.rows)
+  
+  for (k in unique(all.months)){
+    # determining the observations in each month based on those in the desired training/testing set to compute 
+    # the desired model for the month of the given training set and the ones that will be classified based on the 
+    # given model
+    print(paste('Month: ', k))
+    train.rows.mon=train.rows[which(all.months[train.rows]==k)]
+    test.rows.mon=test.rows[which(all.months[test.rows]==k)]
+    comp.true<-c(comp.true,Twb.type[test.rows.mon,32])
+    
+    new.dim<-princ.comp(train.rows.mon) #implementing PCA on them so that they are transformed. new.dim returns the new vectors
+    
+    # reformating and reorganizing transformed data
+    new.data<-cbind(new.dim[[1]],Twb.type[train.rows.mon,32]) %>% as.data.frame
+    new.data[,5]<-as.factor(new.data[,5])
+    
+    # creating the model based on the month in the training set
+    model.mon[[k]]<- best.tune(svm,V5~.,data=new.data,
+                           probability=T, type='C-classification',  ranges = list(cost = 2^(0:4)))
+    # creating the predicted classes
+    res.mon[[k]] <- predict( model.mon[[k]], newdata=as.matrix(Twb.type[test.rows.mon,1:31])%*%new.dim[[2]], probability=T)
+    
+    # storing and pulling out the probablistic classifications
+    xx<-attr(res.mon[[k]], "probabilities") #pull out the probabilities
+    if(dim(xx)[2]>3){
+      comp.prob<-rbind(comp.prob, xx[,order(colnames(xx))])
+    } else {
+      yy<-matrix(0,nrow=dim(xx)[1],ncol=4)
+      yy[,order(colnames(xx))]<-xx[,order(colnames(xx))]
+      comp.prob<-rbind(comp.prob, yy)  
+    }
+   
+   #storing the predictions
+    comp.pred<-c(comp.pred,res.mon[[k]])
+  }
+  model[[i]]<-model.mon #storing models and predictions in case of future reference
+  res[[i]]<-res.mon
+}
+
+# Confusion matrices and overall accuracy
+(conf.mat<-table(pred = comp.pred[-1], true = comp.true[-1]))
+sum(diag(conf.mat))/sum(conf.mat)
+
+# Calculating the BS and BSS scores 
+comp.prob<-cbind(comp.prob[-1,],comp.true[-1])
+(BS<-my.BS.func(comp.prob)) 
+1-BS/0.2200711 
 
 
